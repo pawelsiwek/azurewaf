@@ -20,7 +20,8 @@ def main(mytimer: func.TimerRequest) -> None:
     Args:
         mytimer: Timer trigger input
     """
-    utc_timestamp = datetime.utcnow().isoformat()
+    current_time = datetime.utcnow()
+    utc_timestamp = current_time.isoformat()
 
     if mytimer.past_due:
         logging.info('The timer is past due!')
@@ -41,7 +42,7 @@ def main(mytimer: func.TimerRequest) -> None:
         # Define default tags
         default_tags = {
             'AutoTagged': 'true',
-            'TaggedDate': datetime.utcnow().strftime('%Y-%m-%d'),
+            'TaggedDate': current_time.strftime('%Y-%m-%d'),
             'ManagedBy': 'AzureFunction',
             'Environment': os.environ.get('ENVIRONMENT', 'Production'),
             'CostCenter': os.environ.get('COST_CENTER', 'Default')
@@ -105,6 +106,11 @@ def _get_api_version(resource_type: str) -> str:
         
     Returns:
         API version string
+        
+    Note:
+        API versions should be reviewed and updated periodically to ensure
+        compatibility with the latest Azure resource provider versions.
+        Last updated: 2026-02-04
     """
     # Map of common resource types to API versions
     api_versions = {
