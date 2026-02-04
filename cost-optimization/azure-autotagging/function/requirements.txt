@@ -1,0 +1,4 @@
+# Azure Functions dependencies
+azure-functions>=1.18.0
+azure-identity>=1.15.0
+azure-mgmt-resource>=23.0.0
