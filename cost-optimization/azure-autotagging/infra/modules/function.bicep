@@ -18,11 +18,44 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = {
   }
 }
 
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2021-02-01' = {
+  name: '${appName}-vnet'
+  location: location
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        '10.100.0.0/16'
+      ]
+    }
+    subnets: [
+      {
+        name: 'snet-functions'
+        properties: {
+          addressPrefix: '10.100.1.0/24'
+          delegations: [
+            {
+              name: 'delegation'
+              properties: {
+                serviceName: 'Microsoft.Web/serverFarms'
+              }
+            }
+          ]
+          serviceEndpoints: [
+            {
+              service: 'Microsoft.Storage'
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: '${appName}-plan'
   location: location
   sku: {
-    name: 'Y1'
+    name: 'Y1' 
     tier: 'Dynamic'
   }
   properties: {}
@@ -87,6 +120,63 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
   tags: tags
 }
 
+
+// Network Security Perimeter (NSP) - Preview feature
+resource nsp 'Microsoft.Network/networkSecurityPerimeters@2023-07-01-preview' = {
+  name: '${appName}-nsp'
+  location: location
+  properties: {
+    description: 'Perimeter for Cost Export Function and Storage'
+    displayName: 'CostExportPerimeter'
+  }
+}
+
+resource nspProfile 'Microsoft.Network/networkSecurityPerimeters/profiles@2023-07-01-preview' = {
+  parent: nsp
+  name: 'default'
+  location: location
+}
+
+// Associate Function App
+resource functionAssociation 'Microsoft.Network/networkSecurityPerimeters/resourceAssociations@2023-07-01-preview' = {
+  parent: nsp
+  name: '${appName}-assoc'
+  location: location
+  properties: {
+    privateLinkResource: {
+      id: functionApp.id
+    }
+    profile: {
+      id: nspProfile.id
+    }
+    accessMode: 'Learning' 
+  }
+}
+
+// Reference to external storage account
+resource externalStorage 'Microsoft.Storage/storageAccounts@2022-09-01' existing = {
+  name: 'azuremeetupstg'
+  scope: resourceGroup('azuremeetup-rg')
+}
+
+// Associate External Storage Account
+resource storageAssociation 'Microsoft.Network/networkSecurityPerimeters/resourceAssociations@2023-07-01-preview' = {
+  parent: nsp
+  name: 'azuremeetupstg-assoc'
+  location: location
+  properties: {
+    privateLinkResource: {
+      id: externalStorage.id
+    }
+    profile: {
+      id: nspProfile.id
+    }
+    accessMode: 'Learning'
+  }
+}
+
 output principalId string = functionApp.identity.principalId
 output functionId string = functionApp.id
 output appName string = functionApp.name
+output subnetId string = virtualNetwork.properties.subnets[0].id
+

@@ -11,6 +11,7 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.Resources;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Microsoft.Graph;
 
 namespace AzureAutoTagging
 {
@@ -19,6 +20,7 @@ namespace AzureAutoTagging
         private readonly ILogger _logger;
         private readonly ArmClient _armClient;
         private readonly TokenCredential _credential;
+        private readonly GraphServiceClient _graphClient;
         private static readonly HttpClient _httpClient = new HttpClient();
 
         public TaggingFunction(ILoggerFactory loggerFactory)
@@ -26,6 +28,7 @@ namespace AzureAutoTagging
             _logger = loggerFactory.CreateLogger<TaggingFunction>();
             _credential = new DefaultAzureCredential();
             _armClient = new ArmClient(_credential);
+            _graphClient = new GraphServiceClient(_credential);
         }
 
         [Function("AutoTagResource")]
@@ -99,6 +102,35 @@ namespace AzureAutoTagging
                 if (debugMode) _logger.LogInformation($"[DEBUG] Current tags: {string.Join(", ", currentTags.Select(t => $"{t.Key}={t.Value}"))}");
 
                 bool isModified = false;
+                
+                // Logic for cost-center (Department from Entra)
+                if (!currentTags.ContainsKey("cost-center"))
+                {
+                    if (data.TryGetProperty("claims", out JsonElement claims))
+                    {
+                        string? oid = GetProperty(claims, "http://schemas.microsoft.com/identity/claims/objectidentifier") 
+                                      ?? GetProperty(claims, "oid");
+                        
+                        if (!string.IsNullOrEmpty(oid))
+                        {
+                            try 
+                            {
+                                var user = await _graphClient.Users[oid].GetAsync(c => c.QueryParameters.Select = new[] { "department" });
+                                if (!string.IsNullOrEmpty(user?.Department))
+                                {
+                                    currentTags["cost-center"] = user.Department;
+                                    isModified = true;
+                                    _logger.LogInformation($"Resolved cost-center: {user.Department}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Log warning but verify if it's permission related
+                                _logger.LogWarning($"Could not fetch Entra ID department for user {oid}. Ensure the Function App Identity has User.Read.All permission. Error: {ex.Message}");
+                            }
+                        }
+                    }
+                }
                 
                 // Logic for created-by:
                 // 1. If it exists, leave it alone.
@@ -203,13 +235,15 @@ namespace AzureAutoTagging
         {
             if (data.TryGetProperty("claims", out JsonElement claims))
             {
+                // Prioritize UPN/Email as requested
                 string[] userKeysToLookFor = new[] 
                 { 
-                    "name", 
-                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name", 
                     "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn",
+                    "upn",
+                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
                     "email",
-                    "upn"
+                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+                    "name"
                 };
 
                 foreach (var key in userKeysToLookFor)

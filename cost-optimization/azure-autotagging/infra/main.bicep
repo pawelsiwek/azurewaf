@@ -50,3 +50,4 @@ output functionAppName string = functionApp.outputs.appName
 output resourceGroupName string = resourceGroupName
 output functionAppId string = functionApp.outputs.functionId
 output functionPrincipalId string = functionApp.outputs.principalId
+output functionSubnetId string = functionApp.outputs.subnetId
