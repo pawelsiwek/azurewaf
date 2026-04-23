@@ -153,28 +153,6 @@ resource functionAssociation 'Microsoft.Network/networkSecurityPerimeters/resour
   }
 }
 
-// Reference to external storage account
-resource externalStorage 'Microsoft.Storage/storageAccounts@2022-09-01' existing = {
-  name: 'azuremeetupstg'
-  scope: resourceGroup('azuremeetup-rg')
-}
-
-// Associate External Storage Account
-resource storageAssociation 'Microsoft.Network/networkSecurityPerimeters/resourceAssociations@2023-07-01-preview' = {
-  parent: nsp
-  name: 'azuremeetupstg-assoc'
-  location: location
-  properties: {
-    privateLinkResource: {
-      id: externalStorage.id
-    }
-    profile: {
-      id: nspProfile.id
-    }
-    accessMode: 'Learning'
-  }
-}
-
 output principalId string = functionApp.identity.principalId
 output functionId string = functionApp.id
 output appName string = functionApp.name
